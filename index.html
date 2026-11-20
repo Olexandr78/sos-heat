@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101827">
+<title>Грелка — SOS Heat</title>
+<style>
+:root{color-scheme:dark;--bg:#101827;--panel:#1a2638;--muted:#a9b7ca;--accent:#ff9b45;--line:#34445b}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#26344a 0,#101827 58%);color:#f5f7fb;font:16px system-ui,-apple-system,Segoe UI,sans-serif;display:grid;place-items:center;padding:20px}
+main{width:min(100%,520px)}header{text-align:center;margin:8px 0 22px} .logo{font-size:54px;filter:drop-shadow(0 5px 18px #ff8a3344)}h1{font-size:34px;margin:4px 0}header p,.muted{color:var(--muted)}.card{background:#1a2638eF;border:1px solid var(--line);border-radius:22px;padding:20px;margin:14px 0;box-shadow:0 18px 50px #0003}
+.status{display:flex;align-items:center;justify-content:space-between;gap:12px}.pill{font-size:12px;border:1px solid var(--line);padding:6px 10px;border-radius:99px;color:#c9d5e5}.orb{width:112px;height:112px;border-radius:50%;margin:18px auto;display:grid;place-items:center;background:radial-gradient(circle,#ffbd7040,#ff8c2410 68%);border:1px solid #ffad5b66;font-size:42px}
+label{display:block;margin:18px 0 8px;font-weight:650}input[type=range]{width:100%;accent-color:var(--accent)}.levels{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
+button{border:0;border-radius:14px;padding:14px 18px;font:700 16px system-ui;cursor:pointer;width:100%;background:var(--accent);color:#281607;margin-top:12px}button:disabled{opacity:.5;cursor:not-allowed}button.stop{background:#ff5d62;color:#260b0d}.timer{text-align:center;font-size:32px;font-weight:750;font-variant-numeric:tabular-nums;margin:8px}.warning{border-left:4px solid #ffbd55;background:#4a351b66;padding:12px 14px;border-radius:10px;color:#ffe0ad;font-size:14px;line-height:1.5}.small{font-size:13px;line-height:1.5;color:var(--muted)}footer{text-align:center;font-size:12px;color:var(--muted);padding:8px}
+</style>
+</head>
+<body>
+<main>
+<header><div class="logo">🔥</div><h1>Грелка</h1><p>SOS Heat · маленький CPU-нагреватель</p></header>
+<section class="card">
+ <div class="status"><strong id="state">Ожидание</strong><span class="pill">автостоп · 15 секунд</span></div>
+ <div class="orb" id="flame">❄️</div>
+ <div class="timer" id="timer">00:15</div>
+ <label for="power">Интенсивность нагрузки: <span id="powerText">Низкая · 5%</span></label>
+ <input id="power" type="range" min="5" max="20" step="5" value="5">
+ <div class="levels"><span>5% · низкая</span><span>20% · максимум</span></div>
+ <button id="start">Запустить на 15 секунд</button>
+ <button id="stop" class="stop" disabled>АВАРИЙНАЯ ОСТАНОВКА</button>
+ <p class="small" id="hint">Нагрузка ограничена короткими вычислительными импульсами с паузами. Реальный нагрев зависит от устройства и может быть почти незаметным.</p>
+</section>
+<section class="card">
+ <div class="warning"><strong>⚠️ Важно</strong><br>Это эксперимент, а не безопасный обогреватель. Не запускай его, если телефон уже тёплый, заряжается, лежит под подушкой или находится на солнце. Не используй телефон для обогрева тела и не пытайся нагреть замёрзший аккумулятор. При нагреве, предупреждении системы или дискомфорте немедленно останови тест.</div>
+ <p class="small">Сайт не получает температуру процессора или аккумулятора: обычный браузер не предоставляет надёжный датчик. Не оставляй страницу без присмотра. При сворачивании вкладки тест автоматически остановится.</p>
+</section>
+<footer>Olexandr78 · sos-heat · работает локально в браузере, без рекламы и аналитики</footer>
+</main>
+<script>
+(() => {
+ const $ = id => document.getElementById(id);
+ const power = $('power'), start = $('start'), stop = $('stop');
+ let worker = null, endAt = 0, tick = null;
+ const duration = 15000;
+ function setIdle(message='Ожидание') {
+   if (worker) { worker.terminate(); worker = null; }
+   if (tick) { clearInterval(tick); tick = null; }
+   start.disabled = false; stop.disabled = true;
+   $('state').textContent = message; $('flame').textContent = '❄️';
+   $('timer').textContent = '00:15';
+ }
+ function halt(message='Остановлено') { setIdle(message); }
+ power.addEventListener('input', () => {
+   const v = Number(power.value);
+   $('powerText').textContent = (v <= 5 ? 'Низкая' : v <= 10 ? 'Умеренная' : v <= 15 ? 'Повышенная' : 'Максимальная') + ' · ' + v + '%';
+ });
+ start.addEventListener('click', () => {
+   if (worker) return;
+   const duty = Number(power.value);
+   const source = `
+     let active = true;
+     self.onmessage = e => { if(e.data==='stop') active=false; };
+     function pulse(){
+       if(!active) return;
+       const until = performance.now() + 12;
+       let x = 0.123;
+       while(performance.now() < until) { x = Math.sin(x * 1.00001 + 0.1) * Math.cos(x + 0.2); }
+       if(x === 999) postMessage(x);
+       setTimeout(pulse, Math.max(36, 120 * (100-duty) / duty - 12));
+     }
+     pulse();
+   `;
+   worker = new Worker(URL.createObjectURL(new Blob([source], {type:'text/javascript'})));
+   const url = worker; worker.onmessage = () => {};
+   endAt = Date.now() + duration;
+   start.disabled = true; stop.disabled = false;
+   $('state').textContent = 'Работает · контролируй телефон';
+   $('flame').textContent = '🔥';
+   tick = setInterval(() => {
+     const left = Math.max(0, endAt - Date.now());
+     $('timer').textContent = '00:' + String(Math.ceil(left/1000)).padStart(2,'0');
+     if (left <= 0) halt('Время вышло — остановлено автоматически');
+   }, 100);
+ });
+ stop.addEventListener('click', () => halt('Аварийно остановлено'));
+ document.addEventListener('visibilitychange', () => { if(document.hidden && worker) halt('Остановлено: вкладка скрыта'); });
+ window.addEventListener('pagehide', () => { if(worker) worker.terminate(); });
+})();
+</script>
+</body>
+</html>
